@@ -2,7 +2,26 @@
 
 CLI para calcular o horário de saída do trabalho a partir das marcações de ponto do dia.
 
-## Instalação
+## Download
+
+Baixe o arquivo do seu sistema na página [Releases](https://github.com/jean-with-java/ponto/releases/latest):
+
+| Sistema | Arquivo |
+|---|---|
+| Linux | `ponto_<versão>_linux_amd64.tar.gz` (ou `arm64`) |
+| Windows | `ponto_<versão>_windows_amd64.zip` (ou `arm64`) |
+| Mac Apple Silicon (M1, M2...) | `ponto_<versão>_darwin_arm64.tar.gz` |
+| Mac Intel | `ponto_<versão>_darwin_amd64.tar.gz` |
+
+Extraia e rode o `ponto` pelo terminal. No Mac, o binário não é assinado; libere uma vez com:
+
+```bash
+xattr -d com.apple.quarantine ponto
+```
+
+No Windows, se o SmartScreen avisar, clique em "Mais informações" e "Executar assim mesmo".
+
+## Instalação via Go
 
 Requer Go instalado:
 
