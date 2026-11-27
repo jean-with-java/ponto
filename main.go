@@ -81,35 +81,22 @@ func main() {
 		}
 		avisos = append(avisos, "Usando as últimas marcações de hoje: "+strings.Join(hs, " "))
 	}
-	calc := append([]time.Duration{}, marcacoes...) // marcações usadas no cálculo
-	emPausa := len(marcacoes)%2 == 0
-	presumido := false
-
-	switch {
-	case len(marcacoes) == 1 && marcacoes[0] < almocoPresumidoInicio:
-		calc = []time.Duration{marcacoes[0], almocoPresumidoInicio, almocoPresumidoFim}
-		presumido = true
+	r := calcular(marcacoes, agora)
+	if r.presumido {
 		avisos = append(avisos, fmt.Sprintf("Almoço ainda não marcado: cálculo considera intervalo de %s a %s.",
 			fmtHora(almocoPresumidoInicio), fmtHora(almocoPresumidoFim)))
-	case emPausa:
-		calc = append(calc, agora)
+	}
+	if r.emPausa {
 		avisos = append(avisos, fmt.Sprintf("Em pausa desde %s: cálculo considera que você volta agora (%s).",
 			fmtHora(ultima), fmtHora(agora)))
 	}
-
-	blocos, intervalos := montarBlocos(calc)
-
-	// Trabalhado até agora: sempre com base nas marcações REAIS
-	trabalhadoAgora := trabalhadoAte(marcacoes, agora)
-
-	// Horário de saída: percorre os blocos até completar a jornada
-	saida := calcularSaida(blocos)
+	presumido, intervalos, saida := r.presumido, r.intervalos, r.saida
 
 	// ---- Saída ----
 	if len(marcacoes) > 1 {
-		linha("Trabalhado até "+fmtHora(ultima), fmtDur(trabalhadoAte(marcacoes, ultima)))
+		linha("Trabalhado até "+fmtHora(ultima), fmtDur(r.trabalhadoUltima))
 	}
-	linha("Trabalhado até agora", fmtDur(trabalhadoAgora))
+	linha("Trabalhado até agora", fmtDur(r.trabalhadoAgora))
 
 	var totalIntervalo time.Duration
 	var detalhes []string
@@ -205,6 +192,37 @@ func carregarUltimas() ([]string, error) {
 		return nil, fmt.Errorf("últimas marcações são de %s; informe as de hoje", d.Format("02/01"))
 	}
 	return reg.Marcacoes, nil
+}
+
+// resultado reúne tudo o que é exibido, para facilitar os testes.
+type resultado struct {
+	trabalhadoUltima time.Duration // trabalhado até a última marcação
+	trabalhadoAgora  time.Duration
+	intervalos       []bloco
+	saida            time.Duration
+	presumido        bool // almoço presumido (só 1 marcação)
+	emPausa          bool // número par de marcações
+}
+
+// calcular aplica as regras às marcações reais e ao horário atual.
+func calcular(marcacoes []time.Duration, agora time.Duration) resultado {
+	r := resultado{
+		trabalhadoUltima: trabalhadoAte(marcacoes, marcacoes[len(marcacoes)-1]),
+		trabalhadoAgora:  trabalhadoAte(marcacoes, agora),
+	}
+	calc := append([]time.Duration{}, marcacoes...) // marcações usadas no cálculo
+	switch {
+	case len(marcacoes) == 1 && marcacoes[0] < almocoPresumidoInicio:
+		calc = []time.Duration{marcacoes[0], almocoPresumidoInicio, almocoPresumidoFim}
+		r.presumido = true
+	case len(marcacoes)%2 == 0:
+		calc = append(calc, agora)
+		r.emPausa = true
+	}
+	blocos, intervalos := montarBlocos(calc)
+	r.intervalos = intervalos
+	r.saida = calcularSaida(blocos)
+	return r
 }
 
 // montarBlocos separa as marcações em blocos de trabalho (E→S) e intervalos (S→E).
