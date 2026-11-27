@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -28,17 +30,26 @@ type bloco struct {
 func main() {
 	agoraFlag := flag.String("agora", "", "simula o horário atual (HH:MM), útil para testes")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "uso: ponto [-agora HH:MM] HH:MM [HH:MM ...]")
+		fmt.Fprintln(os.Stderr, "uso: ponto [-agora HH:MM] [HH:MM ...]")
 		fmt.Fprintln(os.Stderr, "exemplo: ponto 07:44 12:43 13:19")
+		fmt.Fprintln(os.Stderr, "sem horários: reutiliza as últimas marcações válidas de hoje")
 	}
 	flag.Parse()
 
-	if flag.NArg() == 0 {
-		flag.Usage()
-		os.Exit(1)
+	args := flag.Args()
+	reutilizado := false
+	if len(args) == 0 {
+		salvas, err := carregarUltimas()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "erro: "+err.Error())
+			flag.Usage()
+			os.Exit(1)
+		}
+		args = salvas
+		reutilizado = true
 	}
 
-	marcacoes, err := parseMarcacoes(flag.Args())
+	marcacoes, err := parseMarcacoes(args)
 	if err != nil {
 		erro(err.Error())
 	}
@@ -56,7 +67,20 @@ func main() {
 		erro(fmt.Sprintf("a última marcação (%s) é posterior ao horário atual (%s)", fmtHora(ultima), fmtHora(agora)))
 	}
 
+	if !reutilizado {
+		if err := salvarUltimas(marcacoes); err != nil {
+			fmt.Fprintln(os.Stderr, "aviso: não foi possível salvar as marcações: "+err.Error())
+		}
+	}
+
 	var avisos []string
+	if reutilizado {
+		var hs []string
+		for _, m := range marcacoes {
+			hs = append(hs, fmtHora(m))
+		}
+		avisos = append(avisos, "Usando as últimas marcações de hoje: "+strings.Join(hs, " "))
+	}
 	calc := append([]time.Duration{}, marcacoes...) // marcações usadas no cálculo
 	emPausa := len(marcacoes)%2 == 0
 	presumido := false
@@ -120,6 +144,67 @@ func main() {
 	for _, a := range avisos {
 		fmt.Println("* " + a)
 	}
+}
+
+// ---- Persistência das últimas marcações ----
+
+type ultimoRegistro struct {
+	Data      string   `json:"data"` // AAAA-MM-DD
+	Marcacoes []string `json:"marcacoes"`
+}
+
+func arquivoUltimo() (string, error) {
+	dir, err := os.UserConfigDir() // ~/.config no Linux
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "ponto", "ultimo.json"), nil
+}
+
+func hoje() string {
+	return time.Now().Format("2006-01-02")
+}
+
+func salvarUltimas(m []time.Duration) error {
+	caminho, err := arquivoUltimo()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(caminho), 0o755); err != nil {
+		return err
+	}
+	reg := ultimoRegistro{Data: hoje()}
+	for _, h := range m {
+		reg.Marcacoes = append(reg.Marcacoes, fmtHora(h))
+	}
+	dados, err := json.MarshalIndent(reg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(caminho, dados, 0o644)
+}
+
+func carregarUltimas() ([]string, error) {
+	caminho, err := arquivoUltimo()
+	if err != nil {
+		return nil, err
+	}
+	dados, err := os.ReadFile(caminho)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("nenhuma marcação salva ainda; informe os horários")
+	}
+	if err != nil {
+		return nil, err
+	}
+	var reg ultimoRegistro
+	if err := json.Unmarshal(dados, &reg); err != nil || len(reg.Marcacoes) == 0 {
+		return nil, fmt.Errorf("arquivo %s inválido; informe os horários", caminho)
+	}
+	if reg.Data != hoje() {
+		d, _ := time.Parse("2006-01-02", reg.Data)
+		return nil, fmt.Errorf("últimas marcações são de %s; informe as de hoje", d.Format("02/01"))
+	}
+	return reg.Marcacoes, nil
 }
 
 // montarBlocos separa as marcações em blocos de trabalho (E→S) e intervalos (S→E).
