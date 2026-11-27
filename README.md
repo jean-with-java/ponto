@@ -39,3 +39,9 @@ ponto
 - Com 1 marcação, considera almoço das 12:00 às 12:30.
 - Com número par de marcações (em pausa), considera retorno no horário atual.
 - `-agora HH:MM` simula o horário atual.
+
+## Testes
+
+```bash
+go test ./...
+```
