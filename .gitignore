@@ -1,0 +1,4 @@
+# Binários
+/ponto
+*.exe
+/dist/
